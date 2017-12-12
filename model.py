@@ -81,7 +81,7 @@ class biaxial_model(object):
         # take last note state e.g. [1,0] as input feature.
         start_note_values = tf.zeros(shape=[n_batch*n_time,1,2])
         correct_choices = tf.reshape(output_mat[:,1:,0:-1,:],(n_batch*n_time,n_note-1,output_size))
-        note_choices_inputs = tf.concat([start_note_values, correct_choices], axis=0)
+        note_choices_inputs = tf.concat([start_note_values, correct_choices], axis=-1)
         
         note_inputs = tf.concat( [time_final, note_choices_inputs], axis=2 )
         
