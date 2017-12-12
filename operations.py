@@ -64,7 +64,7 @@ def map_output_to_input(state, time):
     context = build_context(state)
 
     # Needs to return a numpy array in order to be wrapped as a tensorflow op
-    return np.array([build_note_input(note, state, context, beat) for note in range(len(state))])
+    return np.array([build_note_input(note, state, context, beat) for note in range(len(state))], dtype=np.float32)
 
 
 # Tensorflow Graph operations
