@@ -2,9 +2,17 @@ import tensorflow as tf
 import numpy as np
 from numba.types import none
 from operations import map_output_to_input_tf
+import data
+import time
+from midi_to_statematrix import noteStateMatrixToMidi
+import os
+
 
 class biaxial_model(object):
-    def __init__(self,t_layer_sizes, n_layer_sizes, input_size=80,output_size=2,dropout=0.5):
+    def __init__(self,t_layer_sizes, n_layer_sizes, input_size=80,output_size=2,dropout=0.5,clear_graph=True):
+        if clear_graph:
+            tf.reset_default_graph()
+        
         self.t_layer_sizes = t_layer_sizes
         self.n_layer_sizes = n_layer_sizes
         self.input_size = input_size
@@ -22,7 +30,6 @@ class biaxial_model(object):
         output_size = self.output_size
         dropout = self.dropout
         
-        #tf.reset_default_graph()
         
         #####################################
         #  placeholder for input and output # 
@@ -124,14 +131,17 @@ class biaxial_model(object):
         
         def _step_note(state,indata):
             # state shape: [[100,50],2], indata shape: 300
-            indata = tf.concat((tf.expand_dims(indata,axis=0),state[1]),axis=-1)
+            indata = tf.expand_dims(tf.concat((indata,state[1]),axis=-1),axis=0)
             hidden = state[0]
-            note_output, new_state = self.n_multi_rnn_cell.call(inputs=indata,state=hidden) # output shape: 50, new_state shape: 100 or 50 
-            output = tf.layers.dense(note_output,
+            note_output, new_state = self.n_multi_rnn_cell.call(inputs=indata,state=hidden) # note output shape: 50, new_state shape: 100 or 50 
+            prob = tf.layers.dense(note_output,
                                      units=2,
                                      activation=tf.nn.sigmoid,
                                      name='output_layer',
                                      reuse=True)
+            shouldplay = tf.cast(tf.random_uniform(shape=(1,)) < (prob[0][0] * self.conservativity), tf.float32)
+            shouldartic = shouldplay * tf.cast(tf.random_uniform(shape=(1,)) < prob[0][1], tf.float32)
+            output = tf.concat([shouldplay,shouldartic],axis=-1)
             return (new_state,output)
         
         def _step_time(states,_):
@@ -141,7 +151,7 @@ class biaxial_model(object):
             
             output, new_state = self.t_multi_rnn_cell.call(inputs=indata,state=hidden) # output shape: notes*t_hidden
             
-            start_note_values = tf.zeros((1,2))
+            start_note_values = tf.zeros((2))
             
             n_initializer = (self.n_multi_rnn_cell.zero_state(1, tf.float32),
                              start_note_values)
@@ -150,20 +160,54 @@ class biaxial_model(object):
             next_input = map_output_to_input_tf(note_result[1], time)
             next_input = tf.reshape(next_input,(-1,80))
             time = time + 1
-            return(new_state,next_input,time) 
+            return(new_state,next_input,time, note_result[1]) 
         
+        # values needed to feed when generating new songs
         self.predict_seed = tf.placeholder(dtype=tf.float32, shape=(None,80), name='predict_seed')
         self.step_to_sumulate = tf.placeholder(dtype=tf.int32, shape=(1))
+        self.conservativity = tf.placeholder(dtype=tf.float32,shape=(1))
         
         num_notes = tf.shape(self.predict_seed)[0]
         
         initializer = (self.t_multi_rnn_cell.zero_state(num_notes, tf.float32), # initial state
                        self.predict_seed, # initial input
-                       tf.constant(0)) # time
+                       tf.constant(0), # time
+                       tf.placeholder(dtype=tf.float32,shape=(None,2))) # hold place for note output
         
         elems = tf.zeros(shape=self.step_to_sumulate)
         
         time_result = tf.scan(_step_time,elems=elems,initializer=initializer)
         
-        self.new_song = time_result[1]
+        self.new_song = time_result[3]
         
+    def train(self, pieces, 
+              batch_size=32, 
+              predict_freq=100, 
+              max_epoch=3000, 
+              saveto='NewSong/', 
+              step=319, 
+              conservativity=1):
+        
+        batch_generator = data.generate_batch(pieces,batch_size)
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            for i in range(max_epoch):
+                X_train, y_train = next(batch_generator)
+                _, loss = sess.run((self.optimizer,self.loss), feed_dict={self.input_mat : X_train, self.output_mat : y_train})
+                if i % 10 == 0:
+                    print('Step {0}: loss is {1}'.format(i + 1, loss))
+                if (i+1) % predict_freq == 0:
+                    xIpt, xOpt = map(np.array, data.getPieceSegment(pieces))
+                    new_state_matrix = sess.run(self.new_song, 
+                                                feed_dict={self.predict_seed:xIpt[0], 
+                                                           self.step_to_sumulate:[step],
+                                                            self.conservativity:[conservativity]})
+                    newsong = np.concatenate((np.expand_dims(xOpt[0], 0),new_state_matrix))
+                    
+                    songname = str(time.time())+'.mid'
+                    if not os.path.exists(saveto):
+                        os.makedirs(saveto)
+                    noteStateMatrixToMidi(newsong, name=saveto+songname)
+                    print('New Songs {} saved to {}'.format(songname, saveto[:-1]))
+        
+#biaxial_model(t_layer_sizes=[300,300], n_layer_sizes=[100,50])

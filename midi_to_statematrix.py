@@ -1,5 +1,3 @@
-# This file provide functions for transferring from a midi file to a state matrix and vice versa.
-# Reference: https://github.com/hexahedria/biaxial-rnn-music-composition/blob/master/midi_to_statematrix.py
 import mido as midi
 import numpy as np
 
@@ -69,7 +67,7 @@ def noteStateMatrixToMidi(statematrix, name="example",tickscale = 180):
     statematrix = np.asarray(statematrix)
     pattern = midi.MidiFile()
     track = midi.MidiTrack()
-    pattern.append(track)
+    pattern.tracks.append(track)
     
     span = upperBound-lowerBound
     
