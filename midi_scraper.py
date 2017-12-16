@@ -11,7 +11,7 @@ midi_domain = "http://www.piano-midi.de"
 def get_midi_links_from_page(midi_page):
     # Each artist page has a table for each album
     # Fetch only the actual composition midi links
-    soup = BeautifulSoup(requests.get(midi_page).content, "lxml")
+    soup = BeautifulSoup(requests.get(midi_page).content, "html5")
     tables = soup.findAll("table", attrs={"class": "midi"})
     links = []
     for table in tables:
@@ -19,7 +19,7 @@ def get_midi_links_from_page(midi_page):
     return [link['href'] for link in links if not re.compile(r"format[0-9]").search(link['href'])]
 
 # Go to classical midi page and get all the nav links for each artist
-soup = BeautifulSoup(requests.get(midi_domain).content, "lxml")
+soup = BeautifulSoup(requests.get(midi_domain).content, "html5")
 nav_links_soup = soup.find("div", attrs={"class": "navileft"})
 artist_links = nav_links_soup.findAll("a")[1:-2]
 
