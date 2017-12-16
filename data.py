@@ -62,7 +62,7 @@ def noteStateMatrixToInputForm(statematrix):
     inputform = [noteStateSingleToInputForm(state, time) for time, state in enumerate(statematrix)]
     return inputform
 
-def getpices(path='midis', midi_len=128, mode='all'):
+def getpices(path='midis', midi_len=128, mode='all',composer=None):
     
     pieces = {}
     if not os.path.exists(path):
@@ -71,6 +71,7 @@ def getpices(path='midis', midi_len=128, mode='all'):
     song_count = 0
 
     for composer_name in os.listdir(path):
+        if composer is not None and composer_name not in composer: continue
         for fname in os.listdir(path+'/'+composer_name):
             if fname[-4:] not in ('.mid','.MID'):
                 continue

@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from numba.types import none
+
 from operations import map_output_to_input_tf
 import data
 import time
@@ -139,8 +139,9 @@ class biaxial_model(object):
                                      activation=tf.nn.sigmoid,
                                      name='output_layer',
                                      reuse=True)
-            shouldplay = tf.cast(tf.random_uniform(shape=(1,)) < (prob[0][0] * self.conservativity), tf.float32)
-            shouldartic = shouldplay * tf.cast(tf.random_uniform(shape=(1,)) < prob[0][1], tf.float32)
+            randomness = tf.random_uniform(shape=(1,))
+            shouldplay = tf.cast(randomness < (prob[0][0] * self.conservativity), tf.float32)
+            shouldartic = shouldplay * tf.cast(randomness < prob[0][1], tf.float32)
             output = tf.concat([shouldplay,shouldartic],axis=-1)
             return (new_state,output)
         
@@ -182,19 +183,35 @@ class biaxial_model(object):
         
     def train(self, pieces, 
               batch_size=32, 
-              predict_freq=100, 
-              max_epoch=3000, 
-              saveto='NewSong/', 
+              predict_freq=100,
+              model_save_freq=100,
+              show_freq=10,
+              max_epoch=10000, 
+              saveto='NewSong', 
               step=319, 
-              conservativity=1):
+              conservativity=1,
+              pre_trained_model=None):
         
+        cur_model_name = 'biaxial_rnn_{}'.format(int(time.time()))
         batch_generator = data.generate_batch(pieces,batch_size)
+        minloss = np.inf
         with tf.Session() as sess:
+            saver = tf.train.Saver()
             sess.run(tf.global_variables_initializer())
+            
+            if pre_trained_model is not None:
+                try:
+                    print("Load the model from: {}".format(pre_trained_model))
+                    saver.restore(sess, 'model/{}'.format(pre_trained_model))
+                except Exception:
+                    print("Load model Failed!")
+                    pass
+                
             for i in range(max_epoch):
                 X_train, y_train = next(batch_generator)
                 _, loss = sess.run((self.optimizer,self.loss), feed_dict={self.input_mat : X_train, self.output_mat : y_train})
-                if i % 10 == 0:
+                
+                if i % show_freq == 0:
                     print('Step {0}: loss is {1}'.format(i + 1, loss))
                 if (i+1) % predict_freq == 0:
                     xIpt, xOpt = map(np.array, data.getPieceSegment(pieces))
@@ -205,9 +222,16 @@ class biaxial_model(object):
                     newsong = np.concatenate((np.expand_dims(xOpt[0], 0),new_state_matrix))
                     
                     songname = str(time.time())+'.mid'
-                    if not os.path.exists(saveto):
-                        os.makedirs(saveto)
-                    noteStateMatrixToMidi(newsong, name=saveto+songname)
-                    print('New Songs {} saved to {}'.format(songname, saveto[:-1]))
+                    if not os.path.exists(os.path.join(saveto,cur_model_name)):
+                        os.makedirs(os.path.join(saveto,cur_model_name))
+                    noteStateMatrixToMidi(newsong, name=os.path.join(saveto,cur_model_name,songname))
+                    print('New Songs {} saved to \'{}\''.format(songname, os.path.join(saveto,cur_model_name)))
+                
+                if i >= 100 and loss <= minloss:
+                    if not os.path.exists('model/'):
+                        os.makedirs('model/')
+                    saver.save(sess, 'model/{}'.format(cur_model_name))
+                    print('{} Saved'.format(cur_model_name))
+                    minloss = loss
         
 #biaxial_model(t_layer_sizes=[300,300], n_layer_sizes=[100,50])
