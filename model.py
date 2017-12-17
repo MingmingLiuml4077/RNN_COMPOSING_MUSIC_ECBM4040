@@ -6,10 +6,20 @@ import data
 import time
 from midi_to_statematrix import noteStateMatrixToMidi
 import os
+import pickle
 
 
 class biaxial_model(object):
-    def __init__(self,t_layer_sizes, n_layer_sizes, input_size=80,output_size=2,dropout=0.5,clear_graph=True):
+    def __init__(self,
+                 t_layer_sizes,
+                 n_layer_sizes,
+                 input_size=80,
+                 output_size=2,
+                 dropout=0.5,
+                 clear_graph=True,
+                 trainer = tf.train.AdamOptimizer(),
+                 new_trainer=None):
+        
         if clear_graph:
             tf.reset_default_graph()
         
@@ -19,8 +29,11 @@ class biaxial_model(object):
         self.output_size = output_size
         self.dropout = dropout
         
+        self.trainer = trainer
+        self.new_trainer = new_trainer
         self.setup_train()
         self.setup_predict()
+        
         
         
     def setup_train(self):
@@ -115,16 +128,24 @@ class biaxial_model(object):
                                                 name='output_layer')
                                 ,(n_batch,n_time,n_note,output_size))
         
-        active_notes = input_mat[:,1:,:,0:1]
-        mask = tf.concat([tf.ones_like(active_notes),active_notes],axis=3)
+        with tf.name_scope('loss'):
+            active_notes = input_mat[:,1:,:,0:1]
+            mask = tf.concat([tf.ones_like(active_notes),active_notes],axis=3)
+            
+            likelihood = mask*tf.log(2*note_final*output_mat[:,1:] - note_final - output_mat[:,1:] + 1)
+            self.loss = -tf.reduce_mean(likelihood)
+            tf.summary.scalar('Likelihood_loss', self.loss)
         
-        likelihood = mask*tf.log(2*note_final*output_mat[:,1:] - note_final - output_mat[:,1:] + 1)
-        self.loss = -tf.reduce_sum(likelihood)
-        
-        trainer = tf.train.AdamOptimizer()
-        gradients = trainer.compute_gradients(self.loss)
-        gradients_clipped = [(tf.clip_by_value(t[0],-1,1),t[1]) for t in gradients]
-        self.optimizer = trainer.apply_gradients(gradients_clipped)
+        with tf.name_scope('train_step'):
+            trainer = self.trainer
+            gradients = trainer.compute_gradients(self.loss)
+            gradients_clipped = [(tf.clip_by_value(t[0],-1,1),t[1]) for t in gradients]
+            self.optimizer = trainer.apply_gradients(gradients_clipped)
+        if self.new_trainer is not None:
+            trainer2 = self.new_trainer
+            gradients2 = trainer2.compute_gradients(self.loss)
+            gradients_clipped2 = [(tf.clip_by_value(t[0],-1,1),t[1]) for t in gradients2]
+            self.optimizer2 = trainer.apply_gradients(gradients_clipped2)
         
         
     def setup_predict(self):
@@ -176,16 +197,17 @@ class biaxial_model(object):
                        tf.placeholder(dtype=tf.float32,shape=(None,2))) # hold place for note output
         
         elems = tf.zeros(shape=self.step_to_sumulate)
-        
-        time_result = tf.scan(_step_time,elems=elems,initializer=initializer)
-        
-        self.new_song = time_result[3]
+        with tf.name_scope('predicting'):
+            time_result = tf.scan(_step_time,elems=elems,initializer=initializer)
+            
+            self.new_song = time_result[3]
         
     def train(self, pieces, 
               batch_size=32, 
               predict_freq=100,
               model_save_freq=100,
               show_freq=10,
+              save_freq=500,
               max_epoch=10000, 
               saveto='NewSong', 
               step=319, 
@@ -195,7 +217,12 @@ class biaxial_model(object):
         cur_model_name = 'biaxial_rnn_{}'.format(int(time.time()))
         batch_generator = data.generate_batch(pieces,batch_size)
         minloss = np.inf
+        
+        loss_log = []
         with tf.Session() as sess:
+            
+            merge = tf.summary.merge_all()
+            writer = tf.summary.FileWriter("log/{}".format(cur_model_name), sess.graph)
             saver = tf.train.Saver()
             sess.run(tf.global_variables_initializer())
             
@@ -203,16 +230,27 @@ class biaxial_model(object):
                 try:
                     print("Load the model from: {}".format(pre_trained_model))
                     saver.restore(sess, 'model/{}'.format(pre_trained_model))
+                    #writer = tf.summary.FileWriterCache.get('log/{}'.format(pre_trained_model))
                 except Exception:
                     print("Load model Failed!")
                     pass
-                
+            if self.new_trainer is not None:
+                optimizer = self.optimizer2
+            else: optimizer = self.optimizer
+            
             for i in range(max_epoch):
                 X_train, y_train = next(batch_generator)
-                _, loss = sess.run((self.optimizer,self.loss), feed_dict={self.input_mat : X_train, self.output_mat : y_train})
+                _, loss,merge_result = sess.run((optimizer,self.loss,merge), feed_dict={self.input_mat : X_train, self.output_mat : y_train})
+                
+                loss_log.append(loss)
+                pickle.dump(loss_log,open('model/'+cur_model_name+'_loss_log.pkl','wb'))
+                
                 
                 if i % show_freq == 0:
-                    print('Step {0}: loss is {1}'.format(i + 1, loss))
+                    print('Step {0}: loss is {1}'.format(i, loss))
+                if (i+1) % 10 == 0:
+                    writer.add_summary(merge_result, i)
+                
                 if (i+1) % predict_freq == 0:
                     xIpt, xOpt = map(np.array, data.getPieceSegment(pieces))
                     new_state_matrix = sess.run(self.new_song, 
@@ -227,11 +265,18 @@ class biaxial_model(object):
                     noteStateMatrixToMidi(newsong, name=os.path.join(saveto,cur_model_name,songname))
                     print('New Songs {} saved to \'{}\''.format(songname, os.path.join(saveto,cur_model_name)))
                 
-                if i >= 100 and loss <= minloss:
+                if (i+1) % save_freq == 0:
                     if not os.path.exists('model/'):
                         os.makedirs('model/')
                     saver.save(sess, 'model/{}'.format(cur_model_name))
                     print('{} Saved'.format(cur_model_name))
+                    
+                if loss <= minloss and i >= 100:
                     minloss = loss
+                    if not os.path.exists('model/'):
+                        os.makedirs('model/')
+                    saver.save(sess, 'model/{}_{}'.format('best',cur_model_name))
+                    print('{}_{} Saved'.format('best',cur_model_name))
+                
         
 #biaxial_model(t_layer_sizes=[300,300], n_layer_sizes=[100,50])
