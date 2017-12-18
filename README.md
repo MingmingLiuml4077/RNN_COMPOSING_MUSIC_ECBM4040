@@ -11,7 +11,7 @@ pip install lxml
 ```
 
 ## Use it
-To train the model run _main.py_. you could change the arguments in it to train a new model or restore a pre-trained model. While training the model will generate new songs, which will be saved to 'NewSong/', you could also modified the arguments to change the frequency of composing a new song. If you don't have the data 
+To train the model run _main.py_, or _main.ipynb_. You could change the arguments in it to train a new model or restore a pre-trained model. While training the model will generate new songs, which will be saved to 'NewSong/', you could also modified the arguments to change the frequency of composing a new song. If you don't have the data 
 needed to train or predict, the main.py will automatically download from http://www.piano-midi.de/, and save them to 'midis/'. While training model data will be saved to the 'model/'.
   
 The predict.py is used to predict new songs. It will restore a trained model, and predict new songs base on that. You need to specific the name 
