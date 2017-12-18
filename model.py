@@ -9,7 +9,7 @@ import os
 import pickle
 
 class biaxial_model(object):
-    def __init__(self,t_layer_sizes, n_layer_sizes, input_size=80,output_size=2,dropout=0.5,clear_graph=True,trainer = tf.train.AdamOptimizer(),):
+    def __init__(self,t_layer_sizes, n_layer_sizes, input_size=80,output_size=2,dropout=0.5,clear_graph=True,trainer = tf.train.AdamOptimizer()):
         '''
         This model is a bi-axial LSTM model to generate polyphonic music.
         It has two stacks of LSTM one for time and one for note.
