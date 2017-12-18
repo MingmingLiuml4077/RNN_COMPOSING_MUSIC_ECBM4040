@@ -25,7 +25,10 @@ if __name__ == '__main__':
 
     # Build and load the pre-existing model if it exists
     print('Building model')
-    music_model = model.biaxial_model(t_layer_sizes=[300,300], n_layer_sizes=[100,50])
+    music_model = model.biaxial_model(t_layer_sizes=[300,300],
+        n_layer_sizes=[100,50],
+        trainer = tf.train.RMSPropOptimizer(0.005))
 
     print('Start training')
-    music_model.train(cache, batch_size=5, max_epoch=10000, predict_freq=100, pre_trained_model=model_name)
+    music_model.train(cache, batch_size=5, max_epoch=10000,
+        predict_freq=100, pre_trained_model=model_name)
