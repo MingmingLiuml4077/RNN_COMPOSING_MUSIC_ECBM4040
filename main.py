@@ -4,7 +4,7 @@ import data
 if __name__ == '__main__':
     
     # load midi files as statematrix, if no file will download from "http://www.piano-midi.de"
-    pieces = data.getpices(composer='bach') 
+    pieces = data.getpices(mode='all') 
     
     # Building model
     print('Building model')
