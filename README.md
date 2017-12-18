@@ -17,7 +17,7 @@ needed to train or predict, the main.py will automatically download from http://
 The predict.py is used to predict new songs. It will restore a trained model, and predict new songs base on that. You need to specific the name 
 of the trained model, and make sure the model data is save to 'model/'.
 
-model.py is for the biaxial model class.
+model.py is for the biaxial model class. There are twe arguments for it, 'cache name' and 'model name'
 
 data.py is used to clean data for the model.  
 
