@@ -63,7 +63,7 @@ def noteStateSingleToInputForm(state, time):
 
 
 def noteStateMatrixToInputForm(statematrix):
-    inputform = [noteStateSingleToInputForm(state, time) for time, state in enumerate(statematrix)]
+    inputform = np.int8([noteStateSingleToInputForm(state, time) for time, state in enumerate(statematrix)])
     return inputform
 
 def getpices(path='midis', midi_len=128, mode='all',composer=None):
@@ -85,7 +85,7 @@ def getpices(path='midis', midi_len=128, mode='all',composer=None):
             if len(outMatrix) < midi_len:
                 continue
 
-            pieces[name] = outMatrix
+            pieces[name] = np.int8(outMatrix)
             song_count += 1
             print ("Loaded {}-{}".format(composer_name, fname))
             if mode != 'all':
@@ -95,9 +95,30 @@ def getpices(path='midis', midi_len=128, mode='all',composer=None):
     print ("{} songs are loaded".format(song_count))
     return pieces
 
+def getPieceSegmentFaulty(pieces, piece_length=128, measure_len=16, validation=False):
+    # piece_length means the number of ticks in a training sample, measure_len means number of ticks in a measure
+    val_size = len(pieces) // 5
+    if validation:
+        pieces_set = pieces[-val_size:]
+    else:
+        pieces_set = pieces[:-val_size]
+    piece_name, full_length = random.choice(pieces)
+
+    # We just need a segment of a piece as train data, and we want the start of a sample is the start of a measure
+    start = random.randrange(0, full_length-piece_length,measure_len)
+
+    seg_in, seg_out = cache.get(piece_name, start, start+piece_length)
+
+    return seg_in, seg_out
+
+def generate_batch(cache, batch_size, piece_length=128):
+    while True:
+        i,o = zip(*[getPieceSegment(cache, piece_length) for _ in range(batch_size)])
+        yield(i,o)
+
 def getPieceSegment(cache, piece_length=128, measure_len=16, validation=False):
     # piece_length means the number of ticks in a training sample, measure_len means number of ticks in a measure
-    val_size = len(cache.size) // 5
+    val_size = max(cache.size // 5, 1)
     if validation:
         keys_and_lengths = cache.keys_and_lengths[-val_size:]
     else:
@@ -107,24 +128,21 @@ def getPieceSegment(cache, piece_length=128, measure_len=16, validation=False):
     # We just need a segment of a piece as train data, and we want the start of a sample is the start of a measure
     start = random.randrange(0, full_length-piece_length,measure_len)
 
-    seg_in, seg_out = cache.get(piece_name, start, start+piece_length, val=validation)
+    seg_in, seg_out = cache.get(piece_name, start, start+piece_length)
 
     return seg_in, seg_out
 
-def generate_batch(cache, batch_size, piece_length=128):
-    while True:
-        i,o = zip(*[getPieceSegment(cache, piece_length) for _ in range(batch_size)])
-        yield(i,o)
 
-def initialize_cache(pieces, piece_length=128, measure_len=16):
+def initialize_cache(pieces, piece_length=128, measure_len=16, save_loc="cache.pkl"):
     midi_cache = Cache()
     for piece_name in pieces:
         out_matrix = pieces[piece_name]
+        print(out_matrix.shape)
         in_matrix = noteStateMatrixToInputForm(out_matrix)
         midi_cache.cache(in_matrix, out_matrix, piece_name)
 
-    print("Cache initialized with {} pieces; total size is {} bytes".format(len(pieces), sys.getsizeof(midi_cache)))
-    midi_cache.save()
+    print("Cache initialized with {} pieces; total size is {} bytes".format(len(pieces), midi_cache.byte_size))
+    midi_cache.save(save_loc=save_loc)
     return midi_cache
 
 
@@ -148,4 +166,14 @@ def translate(note_matrix, direction="up"):
         else:
             translated_matrix.append([pair for pair in step_notes[1:]] + [[0, 0]])
 
+    return translated_matrix
+
+def translate_np(note_matrix, shift=1, direction="up"):
+    """
+    Translate the notes in a piece up or down one note to test invariance.
+    Preprocess the note_matrix to get mute the highest and lowest note.
+    """
+    if direction == "down":
+        shift = shift * -1
+    translated_matrix = np.roll(note_matrix, shift, axis=-2)
     return translated_matrix

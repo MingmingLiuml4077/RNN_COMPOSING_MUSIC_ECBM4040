@@ -272,7 +272,7 @@ class biaxial_model(object):
                     print('{} Saved'.format(cur_model_name))
 
                     # Get validation data and validate
-                    xIpt_val, xOpt_val = map(np.array, data.getPieceSegment(cache_val, validation=True))
+                    xIpt_val, xOpt_val = map(np.array, data.getPieceSegment(cache, validation=True))
                     val_loss = sess.run((self.loss), feed_dict={
                         self.input_mat : xIpt_val, self.output_mat : xOpt_val
                     })

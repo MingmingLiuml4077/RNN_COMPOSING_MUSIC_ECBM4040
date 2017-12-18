@@ -39,3 +39,13 @@ def test_translate():
 
     translated_matrix_d = data.translate(rand_matrix, direction="down")
     assert translated_matrix_d[0][:-1] == rand_matrix[0][1:]
+
+def test_translate_np():
+    # Simulate a piece matrix of length 100 timesteps and test if translate
+    # shifts the matrix down and up correctly across the note axis
+    rand_matrix = np.random.rand(100*78*2).reshape(100, 78, 2)
+    translated_matrix = data.translate(rand_matrix, direction="up")
+    assert translated_matrix[0][1:] == rand_matrix[0][:-1]
+
+    translated_matrix_d = data.translate(rand_matrix, direction="down")
+    assert translated_matrix_d[0][:-1] == rand_matrix[0][1:]
