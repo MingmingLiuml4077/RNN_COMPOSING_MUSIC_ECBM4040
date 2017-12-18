@@ -338,7 +338,7 @@ class biaxial_model(object):
                     saver.save(sess, 'model/{}_{}'.format('best',cur_model_name))
                     print('{}_{} Saved'.format('best',cur_model_name))
     
-    def predict(self,pieces,pre_trained_model,saveto='NewSong',step=319,conservativity=1):
+    def predict(self,pieces,pre_trained_model,n=1,saveto='NewSong',step=319,conservativity=1):
         # This function predict only
         with tf.Session() as sess:
             saver = tf.train.Saver()
@@ -346,19 +346,19 @@ class biaxial_model(object):
             
             print("Load the model from: {}".format(pre_trained_model))
             saver.restore(sess, 'model/{}'.format(pre_trained_model))
-            
-            xIpt, xOpt = map(np.array, data.getPieceSegment(pieces))
-            new_state_matrix = sess.run(self.new_song, 
-                                        feed_dict={self.predict_seed:xIpt[0], 
-                                                   self.step_to_sumulate:[step],
-                                                    self.conservativity:[conservativity]})
-            newsong = np.concatenate((np.expand_dims(xOpt[0], 0),new_state_matrix))
-    
-            songname = str(time.time())+'.mid'
-            if not os.path.exists(os.path.join(saveto,pre_trained_model)):
-                os.makedirs(os.path.join(saveto,pre_trained_model))
-            noteStateMatrixToMidi(newsong, name=os.path.join(saveto,pre_trained_model,songname))
-            print('New Songs {} saved to \'{}\''.format(songname, os.path.join(saveto,pre_trained_model)))
+            for i in range(n):
+                xIpt, xOpt = map(np.array, data.getPieceSegment(pieces))
+                new_state_matrix = sess.run(self.new_song, 
+                                            feed_dict={self.predict_seed:xIpt[0], 
+                                                       self.step_to_sumulate:[step],
+                                                        self.conservativity:[conservativity]})
+                newsong = np.concatenate((np.expand_dims(xOpt[0], 0),new_state_matrix))
+        
+                songname = str(time.time())+'.mid'
+                if not os.path.exists(os.path.join(saveto,pre_trained_model)):
+                    os.makedirs(os.path.join(saveto,pre_trained_model))
+                noteStateMatrixToMidi(newsong, name=os.path.join(saveto,pre_trained_model,songname))
+                print('New Songs {} saved to \'{}\''.format(songname, os.path.join(saveto,pre_trained_model)))
         
         
 #biaxial_model(t_layer_sizes=[300,300], n_layer_sizes=[100,50])
