@@ -29,5 +29,5 @@ operations.py is for truning a python function to tensorflow operation.
 
 cache.py is used to save the input format of statematrix, which enables us train faster whithout translating data every time.
 
-In the folder _model_generated_midi_, there are samples of midi files the moel generated.
+In the folder _best_samples_, there are samples of midi files the moel generated.
 
