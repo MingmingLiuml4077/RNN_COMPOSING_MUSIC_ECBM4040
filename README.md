@@ -27,6 +27,7 @@ midi_to_statematrix.py is to read the midi files and translate it to not state m
 
 operations.py is for truning a python function to tensorflow operation.
 
+cache.py is used to save the input format of statematrix, which enables us train faster whithout translating data every time.
+
 In the folder _model_generated_midi_, there are samples of midi files the moel generated.
-## Note
-The _model_tb.py_ is just used to generate the tensorboard graph. It cannot restore the model trained by _main.py_.
+
