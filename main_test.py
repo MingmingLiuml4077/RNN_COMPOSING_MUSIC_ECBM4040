@@ -4,19 +4,33 @@ import data
 import os
 import pickle
 import sys
-
+import tensorflow as tf
+import argparse
 
 if __name__ == '__main__':
 
     # Check for the existence of previous cache and models
-    cache_name = sys.argv[-2]
-    model_name = sys.argv[-1]
+    parser = argparse.ArgumentParser(description="RNN train")
+    parser.add_argument(
+        "--cache_dir", help="Path to cache file",
+        default='cache.pkl')
+    parser.add_argument(
+        "--model_name", help="Path to pretrained model.", default=None)
+    args = parser.parse_args()
+    
+    cache_name = args.cache_dir
+    model_name = args.model_name
+    
 
     if not os.path.exists(cache_name):
         composers = input("Enter composers separated by spaces: ").split()
         all_pieces = {}
-        for c in composers:
-            all_pieces.update(data.getpices(path="../midis", composer=c))
+        
+        if len(composers)==0:
+            all_pieces.update(data.getpices(path="midis", mode='all'))
+        else:
+            for c in composers:
+                all_pieces.update(data.getpices(path="../midis", composer=c))
 
         cache = data.initialize_cache(all_pieces, save_loc=cache_name)
     else:

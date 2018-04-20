@@ -116,9 +116,14 @@ def generate_batch(cache, batch_size, piece_length=128):
         i,o = zip(*[getPieceSegment(cache, piece_length) for _ in range(batch_size)])
         yield(i,o)
 
+def generate_val_batch(cache, batch_size, piece_length=128):
+    while True:
+        i,o = zip(*[getPieceSegment(cache, piece_length,validation=True) for _ in range(batch_size)])
+        yield(i,o)
+
 def getPieceSegment(cache, piece_length=128, measure_len=16, validation=False):
     # piece_length means the number of ticks in a training sample, measure_len means number of ticks in a measure
-    val_size = max(cache.size // 5, 1)
+    val_size = max(cache.size // 10, 1)
     if validation:
         keys_and_lengths = cache.keys_and_lengths[-val_size:]
     else:
@@ -142,6 +147,7 @@ def initialize_cache(pieces, piece_length=128, measure_len=16, save_loc="cache.p
         midi_cache.cache(in_matrix, out_matrix, piece_name)
 
     print("Cache initialized with {} pieces; total size is {} bytes".format(len(pieces), midi_cache.byte_size))
+    midi_cache.shuffle_piece()
     midi_cache.save(save_loc=save_loc)
     return midi_cache
 

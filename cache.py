@@ -1,5 +1,5 @@
 import numpy as np
-
+from random import shuffle
 import sys
 
 class Cache:
@@ -36,3 +36,7 @@ class Cache:
 
         with open(save_loc, "wb") as f:
             pickle.dump(self, f)
+    
+    def shuffle_piece(self):
+        shuffle(self.keys_and_lengths)
+    

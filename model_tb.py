@@ -269,13 +269,12 @@ class biaxial_model(object):
         with tf.name_scope('predicting'):
             time_result = tf.scan(_step_time,elems=elems,initializer=initializer)
 
-             # the statematrix of the song we generate/predict.
+            # the statematrix of the song we generate/predict.
             self.new_song = time_result[3]
 
     def train(self, cache,
               batch_size=32,
               predict_freq=100,
-              model_save_freq=100,
               show_freq=10,
               save_freq=500,
               max_epoch=10000,
@@ -300,6 +299,7 @@ class biaxial_model(object):
 
         cur_model_name = 'biaxial_rnn_{}'.format(int(time.time()))
         batch_generator = data.generate_batch(cache,batch_size)
+        val_barch_generator = data.generate_val_batch(cache,batch_size)
 
         loss_log = []
         min_loss = np.inf
@@ -358,7 +358,7 @@ class biaxial_model(object):
                     print('{} Saved'.format(cur_model_name))
 
                     # Get validation data and validate
-                    xIpt_val, xOpt_val = map(np.array, data.getPieceSegment(cache, validation=True))
+                    xIpt_val, xOpt_val = next(val_barch_generator)
                     val_loss = sess.run((self.loss), feed_dict={
                         self.input_mat : xIpt_val, self.output_mat : xOpt_val
                     })
