@@ -1,14 +1,44 @@
-import model
+import model_tb as model
 import data
+import argparse
+import os
+import pickle
+import tensorflow as tf
 
 if __name__ == '__main__':
     
-    # load midi files as statematrix, if no file will download from "http://www.piano-midi.de"
-    pieces = data.getpices(mode='all') 
+    # Check for the existence of previous cache and models
+    parser = argparse.ArgumentParser(description="RNN predict")
+    parser.add_argument(
+        "--model_name", help="name of pre-trained model.", required=True)
+    parser.add_argument(
+        "--cache_dir", help="Path to cache file",
+        default='cache.pkl')
+    
+    args = parser.parse_args()
+    
+    cache_name = args.cache_dir
+    model_name = args.model_name
+    
+
+    if not os.path.exists(cache_name):
+        composers = input("Enter composers separated by spaces: ").split()
+        all_pieces = {}
+        
+        if len(composers)==0:
+            all_pieces.update(data.getpices(path="midis", mode='all'))
+        else:
+            for c in composers:
+                all_pieces.update(data.getpices(path="../midis", composer=c))
+
+        cache = data.initialize_cache(all_pieces, save_loc=cache_name)
+    else:
+        with open(cache_name, 'rb') as f:
+            cache = pickle.load(f)
     
     # Building model
     print('Building model')
-    music_model = model.biaxial_model(t_layer_sizes=[300,300], n_layer_sizes=[100,50])
+    music_model = model.biaxial_model(t_layer_sizes=[300,300], n_layer_sizes=[100,50], trainer=tf.train.RMSPropOptimizer(0.005))
     
     print('Start predicting')
-    music_model.predict(pieces,'biaxial_rnn_1513531465',step=320,conservativity=1,n=20)
+    music_model.predict(cache,model_name,step=320,conservativity=1,n=20,saveto='predict songs')

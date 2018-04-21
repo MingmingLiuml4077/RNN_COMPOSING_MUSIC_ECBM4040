@@ -69,6 +69,7 @@ class biaxial_model(object):
         #####################################
         input_mat = tf.placeholder(dtype=tf.float32,shape=(None,None,None,input_size))
         output_mat = tf.placeholder(dtype=tf.float32,shape=(None,None,None,output_size))
+        
         # input_mat shape = [n_batch,n_time,n_note,input_size]
         self.input_mat = input_mat
         self.output_mat = output_mat
@@ -91,20 +92,22 @@ class biaxial_model(object):
         num_time_parallel = tf.shape(time_inputs)[0]
 
         # two layer LSTM with state drop out
-        t_lstm_cells = [tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.LSTMCell(hs),
-                                                      output_keep_prob=1-dropout,
-                                                      variational_recurrent=True,
-                                                      dtype=tf.float32) for hs in t_layer_sizes]
-        t_multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(t_lstm_cells)
-        self.t_multi_rnn_cell = t_multi_rnn_cell
+        with tf.variable_scope('time_model'):
+            t_lstm_cells = [tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.LSTMCell(hs),
+                                                          output_keep_prob=1-dropout,
+                                                          variational_recurrent=True,
+                                                          dtype=tf.float32) for hs in t_layer_sizes]
+            t_multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(t_lstm_cells)
+            
+        # self.t_multi_rnn_cell = t_multi_rnn_cell
 
         # shape of time_result : [n_batch*n_note, max_time, n_hidden]
-        t_init_state = t_multi_rnn_cell.zero_state(num_time_parallel, tf.float32)
-        time_result, time_final_state = tf.nn.dynamic_rnn(t_multi_rnn_cell,
-                                                          time_inputs,
-                                                          initial_state=t_init_state,
-                                                          dtype=tf.float32,
-                                                          scope='t_rnn')
+            t_init_state = t_multi_rnn_cell.zero_state(num_time_parallel, tf.float32)
+            time_result, time_final_state = tf.nn.dynamic_rnn(t_multi_rnn_cell,
+                                                              time_inputs,
+                                                              initial_state=t_init_state,
+                                                              dtype=tf.float32
+                                                              )
         
         # the output size of time model and the input size of note model
         n_hidden = t_layer_sizes[-1]
@@ -136,25 +139,33 @@ class biaxial_model(object):
         num_timebatch = tf.shape(note_choices_inputs)[0]
 
         # n layer LSTM with state drop out
-        n_lstm_cells = [tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.LSTMCell(hs),
-                                                      output_keep_prob=1-dropout,
-                                                      variational_recurrent=True,
-                                                      dtype=tf.float32) for hs in n_layer_sizes]
-        n_multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(n_lstm_cells)
-        self.n_multi_rnn_cell = n_multi_rnn_cell
+        with tf.variable_scope('note_model'):
+            n_lstm_cells = [tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.LSTMCell(hs),
+                                                           output_keep_prob=1-dropout,
+                                                           variational_recurrent=True,
+                                                           dtype=tf.float32) for hs in n_layer_sizes]
+            n_multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(n_lstm_cells)
+            
+        # self.n_multi_rnn_cell = n_multi_rnn_cell
 
-        n_init_state = n_multi_rnn_cell.zero_state(num_timebatch, tf.float32)
-        note_result, note_final_state = tf.nn.dynamic_rnn(n_multi_rnn_cell,
-                                                          note_inputs,
-                                                          initial_state=n_init_state,
-                                                          dtype=tf.float32,
-                                                          scope='n_rnn')
+            n_init_state = n_multi_rnn_cell.zero_state(num_timebatch, tf.float32)
+            note_result, note_final_state = tf.nn.dynamic_rnn(n_multi_rnn_cell,
+                                                              note_inputs,
+                                                              initial_state=n_init_state,
+                                                              dtype=tf.float32
+                                                              )
 
         # The last dense layer to translate the output size to 2. Here the final output should have the size as the 
         # output matrix
+#         note_final = tf.reshape(tf.layers.dense(tf.reshape(note_result,(n_batch*n_time*n_note,self.n_layer_sizes[-1])),
+#                                                 units=output_size,
+#                                                 activation=tf.nn.sigmoid,
+#                                                 name='output_layer')
+#                                 ,(n_batch,n_time,n_note,output_size))
+        
         note_final = tf.reshape(tf.layers.dense(tf.reshape(note_result,(n_batch*n_time*n_note,self.n_layer_sizes[-1])),
                                                 units=output_size,
-                                                activation=tf.nn.sigmoid,
+                                                activation=None,
                                                 name='output_layer')
                                 ,(n_batch,n_time,n_note,output_size))
 
@@ -173,11 +184,13 @@ class biaxial_model(object):
         # we apply mean to every single digits, while he use the mean over time and notes, where each note has 2 digits to
         # represent it.
         with tf.name_scope('loss'):
-            active_notes = input_mat[:,1:,:,0:1]
-            mask = tf.concat([tf.ones_like(active_notes),active_notes],axis=3)
-
-            likelihood = mask*tf.log(2*note_final*output_mat[:,1:] - note_final - output_mat[:,1:] + 1)
-            self.loss = -tf.reduce_mean(likelihood)
+#             active_notes = input_mat[:,1:,:,0:1]
+#             mask = tf.concat([tf.ones_like(active_notes),active_notes],axis=3)
+#  
+#             likelihood = mask*tf.log(2*note_final*output_mat[:,1:] - note_final - output_mat[:,1:] + 1)
+#             self.loss = -tf.reduce_mean(likelihood)
+            mask = tf.stack([tf.ones_like(output_mat[:,1:,:,0]),output_mat[:,1:,:,0]],axis=-1) 
+            self.loss = tf.reduce_mean(mask*tf.nn.sigmoid_cross_entropy_with_logits(labels=output_mat[:,1:], logits=note_final, name='loss'))
             tf.summary.scalar('Likelihood_loss', self.loss)
 
         # Here we also apply clip technique as in the assignment.
@@ -203,8 +216,20 @@ class biaxial_model(object):
         # When training we have tensorflow function 'tf.nn.dynamic_rnn' to help us to feedforward, but here we don't have the whole data 
         # to feed forward in the time model. We first need to get the last time step note-model's output then we could keep going in the 
         # time model.Therefore, we use 'tf.scan' here to loop through both time and notes here.
-        
+        with tf.variable_scope('note_model', reuse=True):
+            n_lstm_cells = [tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.LSTMCell(hs, reuse=True),
+                                                          output_keep_prob=1,
+                                                          variational_recurrent=True,
+                                                          dtype=tf.float32) for hs in self.n_layer_sizes]
+            self.n_multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(n_lstm_cells)
 
+        with tf.variable_scope('time_model', reuse=True):
+            t_lstm_cells = [tf.contrib.rnn.DropoutWrapper(tf.contrib.rnn.LSTMCell(hs, reuse=True),
+                                                          output_keep_prob=1,
+                                                          variational_recurrent=True,
+                                                          dtype=tf.float32) for hs in self.t_layer_sizes]
+            self.t_multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(t_lstm_cells)
+        
         def _step_note(state,indata):
             # the function we loop through in note model
             # shape of state: ([100,50],2), indata shape: 300
@@ -212,7 +237,8 @@ class biaxial_model(object):
             hidden = state[0]
             
             # one note step forward
-            note_output, new_state = self.n_multi_rnn_cell.call(inputs=indata,state=hidden) # note output shape: 50, new_state shape: 100 or 50
+            with tf.variable_scope('note_model/rnn/multi_rnn_cell'):
+                note_output, new_state = self.n_multi_rnn_cell.call(inputs=indata,state=hidden) # note output shape: 50, new_state shape: 100 or 50
             prob = tf.layers.dense(note_output,
                                      units=2,
                                      activation=tf.nn.sigmoid,
@@ -234,7 +260,8 @@ class biaxial_model(object):
             time = states[2]
 
             # one time step forward 
-            output, new_state = self.t_multi_rnn_cell.call(inputs=indata,state=hidden) # output shape: notes*t_hidden
+            with tf.variable_scope('time_model/rnn/multi_rnn_cell'):
+                output, new_state = self.t_multi_rnn_cell.call(inputs=indata,state=hidden) # output shape: notes*t_hidden
 
             start_note_values = tf.zeros((2))
 
@@ -266,6 +293,7 @@ class biaxial_model(object):
         # Since we are here do not need to loop through any variable but a specific steps(ticks), which define in
         # 'step_to_sumulate', we create a tensor for the tf.scan to loop through.
         elems = tf.zeros(shape=self.step_to_sumulate)
+        
         with tf.name_scope('predicting'):
             time_result = tf.scan(_step_time,elems=elems,initializer=initializer)
 
@@ -372,7 +400,7 @@ class biaxial_model(object):
                         print('{}_{} Saved'.format('best',cur_model_name))
 
 
-    def predict(self,pieces,pre_trained_model,n=1,saveto='NewSong',step=319,conservativity=1):
+    def predict(self,cache,pre_trained_model,n=1,saveto='NewSong',step=319,conservativity=1):
         # This function predict only
         with tf.Session() as sess:
             saver = tf.train.Saver()
@@ -380,8 +408,8 @@ class biaxial_model(object):
             
             print("Load the model from: {}".format(pre_trained_model))
             saver.restore(sess, 'model/{}'.format(pre_trained_model))
-            for i in range(n):
-                xIpt, xOpt = map(np.array, data.getPieceSegment(pieces))
+            for _ in range(n):
+                xIpt, xOpt = map(np.array, data.getPieceSegment(cache))
                 new_state_matrix = sess.run(self.new_song, 
                                             feed_dict={self.predict_seed:xIpt[0], 
                                                        self.step_to_sumulate:[step],
